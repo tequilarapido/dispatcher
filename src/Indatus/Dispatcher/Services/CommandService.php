@@ -1,5 +1,8 @@
 <?php namespace Indatus\Dispatcher\Services;
 
+use App;
+use Indatus\Dispatcher\Scheduling\ScheduledCommandInterface;
+
 /**
  * This file is part of Dispatcher
  *
@@ -8,11 +11,6 @@
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
  */
-
-use App;
-use Indatus\Dispatcher\Scheduling\ScheduledCommand;
-use Indatus\Dispatcher\Scheduling\ScheduledCommandInterface;
-
 class CommandService
 {
 
@@ -44,7 +42,8 @@ class CommandService
             if ($command->isEnabled() && $this->runnableInEnvironment($command)) {
                 $scheduler = $queueItem->getScheduler();
 
-                $backgroundProcessRunner->run($command, $scheduler->getArguments(), $scheduler->getOptions());
+                $options = $this->addEnvironmentOption($scheduler->getOptions());
+                $backgroundProcessRunner->run($command, $scheduler->getArguments(), $options);
             }
         }
     }
@@ -98,7 +97,7 @@ class CommandService
             //if it's an array of options, throw them in there as well
             if (is_array($value)) {
                 foreach ($value as $optArrayValue) {
-                    $optionPieces[] = '--'.$opt.'="'.addslashes($optArrayValue).'"';
+                    $optionPieces[] = '--' . $opt . '="' . addslashes($optArrayValue) . '"';
                 }
             } else {
                 $option = null;
@@ -107,11 +106,11 @@ class CommandService
                 if (is_numeric($opt)) {
                     $option = $value;
                 } elseif (!empty($value)) {
-                    $option = $opt.'="'.addslashes($value).'"';
+                    $option = $opt . '="' . addslashes($value) . '"';
                 }
 
                 if (!is_null($option)) {
-                    $optionPieces[] = '--'.$option;
+                    $optionPieces[] = '--' . $option;
                 }
             }
         }
@@ -123,8 +122,8 @@ class CommandService
      * Get a command to run this application
      *
      * @param \Indatus\Dispatcher\Scheduling\ScheduledCommandInterface $scheduledCommand
-     * @param array $arguments
-     * @param array $options
+     * @param array                                                    $arguments
+     * @param array                                                    $options
      *
      * @return string
      */
@@ -138,7 +137,7 @@ class CommandService
 
         $commandPieces = array(
             'php',
-            base_path().'/artisan',
+            'artisan',
             $scheduledCommand->getName()
         );
 
@@ -154,14 +153,11 @@ class CommandService
             $commandPieces[] = '> /dev/null'; //don't show output, errors can be viewed in the Laravel log
             $commandPieces[] = '&'; //run in background
 
-            //for linux, use environment variable
-            array_unshift($commandPieces, '/usr/bin/env');
-
             //run the command as a different user
             if (is_string($scheduledCommand->user())) {
-                array_unshift($commandPieces, 'sudo -u '.$scheduledCommand->user());
+                array_unshift($commandPieces, 'sudo -u ' . $scheduledCommand->user());
             }
-        } elseif($platform->isWindows()) {
+        } elseif ($platform->isWindows()) {
             $commandPieces[] = '> NUL'; //don't show output, errors can be viewed in the Laravel log
 
             //run in background on windows
@@ -169,7 +165,19 @@ class CommandService
             array_unshift($commandPieces, 'START');
         }
 
-        return implode(' ', $commandPieces);
+        $command = implode(' ', $commandPieces);
+        echo "Running : [$command]" . PHP_EOL;
+
+        return $command;
+    }
+
+    private function addEnvironmentOption($options)
+    {
+        if (is_array($options)) {
+            return array_merge($options, ['env' => App::environment()]);
+        }
+
+        return  $options;
     }
 
 }
